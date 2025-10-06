@@ -46,7 +46,7 @@ class Pieza: #clase principal pieza
 
                 c0 = coord
                 coord = c0 + m
-                controladas.update(movimientos)
+        controladas.update(movimientos)
 
         return movimientos, controladas
     
@@ -138,13 +138,13 @@ class Peon(Pieza):
                     coord = self.idx + m
                     key = tuple(map(int,coord))
                     if np.all(0 <= coord) and np.all(coord < 8) and key not in ocupadas: #esto puede ser que sobre porque por las condiciones y el tipo de movimiento no debería poder salirse del tablero, pero bueno
-                        movimientos.append(tuple(coord))
+                        movimientos.append(key)
 
             elif np.array_equal(m,np.array([0, tools.color_to_meth.get(self.color)])):#mover uno
                 coord = self.idx + m
                 key = tuple(map(int,coord))
                 if np.all(0 <= coord) and np.all(coord < 8) and key not in ocupadas:
-                    movimientos.append(tuple(coord)) #y nada mas porque son peones
+                    movimientos.append(key) #y nada mas porque son peones
 
             else:#capturas
                 coord = self.idx + m
@@ -152,13 +152,13 @@ class Peon(Pieza):
                 if 0<=key[0]<8 and 0<=key[1]<8:
                     controladas.add(key)
                     if (key in ocupadas and ocupadas[key].color != self.color):
-                        movimientos.append(tuple(coord))
+                        movimientos.append(key)
                         if isinstance(ocupadas[key], Rey):
                             amenazas = [tuple(map(int,self.idx))]
                             amenazas += key 
                             ocupadas[key].manejar_checks(amenazas)    
                     elif key in al_paso:
-                        movimientos.append(tuple(coord))                    
+                        movimientos.append(key)                    
 
         return movimientos, controladas
     
@@ -178,6 +178,11 @@ class Rey(Rey, pygame.sprite.Sprite):
         self.rect = self.image.get_rect(center=pos)
         self.idx = idx
 
+    def update(self):
+        x,y = self.idx
+        self.rect.centerx = x*CELDA_SIZE + CELDA_SIZE//2
+        self.rect.centery = y*CELDA_SIZE + CELDA_SIZE//2
+
 class Reina(Reina, pygame.sprite.Sprite):
     def __init__(self, color, idx, pos):
         super().__init__(color, idx)
@@ -185,6 +190,11 @@ class Reina(Reina, pygame.sprite.Sprite):
         self.image = pygame.transform.scale(pygame.image.load(f"C:/Users/Josh/Desktop/CHE$$/2.0/sprites/{color}q.png").convert_alpha(), (45,45))
         self.rect = self.image.get_rect(center=pos)
         self.idx = idx
+
+    def update(self):
+        x,y = self.idx
+        self.rect.centerx = x*CELDA_SIZE + CELDA_SIZE//2
+        self.rect.centery = y*CELDA_SIZE + CELDA_SIZE//2
 
 class Torre(Torre, pygame.sprite.Sprite):
     def __init__(self, color, idx, pos):
@@ -194,6 +204,11 @@ class Torre(Torre, pygame.sprite.Sprite):
         self.rect = self.image.get_rect(center=pos)
         self.idx = idx
 
+    def update(self):
+        x,y = self.idx
+        self.rect.centerx = x*CELDA_SIZE + CELDA_SIZE//2
+        self.rect.centery = y*CELDA_SIZE + CELDA_SIZE//2
+
 class Caballo(Caballo, pygame.sprite.Sprite):
     def __init__(self, color, idx, pos):
         super().__init__(color, idx)
@@ -201,6 +216,11 @@ class Caballo(Caballo, pygame.sprite.Sprite):
         self.image = pygame.transform.scale(pygame.image.load(f"C:/Users/Josh/Desktop/CHE$$/2.0/sprites/{color}k.png").convert_alpha(), (45,45))
         self.rect = self.image.get_rect(center=pos)
         self.idx = idx
+
+    def update(self):
+        x,y = self.idx
+        self.rect.centerx = x*CELDA_SIZE + CELDA_SIZE//2
+        self.rect.centery = y*CELDA_SIZE + CELDA_SIZE//2
 
 class Alfil(Alfil, pygame.sprite.Sprite):
     def __init__(self,color, idx, pos):
@@ -210,6 +230,11 @@ class Alfil(Alfil, pygame.sprite.Sprite):
         self.rect = self.image.get_rect(center=pos)
         self.idx = idx
 
+    def update(self):
+        x,y = self.idx
+        self.rect.centerx = x*CELDA_SIZE + CELDA_SIZE//2
+        self.rect.centery = y*CELDA_SIZE + CELDA_SIZE//2
+
 class Peon(Peon, pygame.sprite.Sprite):
     def __init__(self,color, idx, pos):
         super().__init__(color, idx)
@@ -217,6 +242,11 @@ class Peon(Peon, pygame.sprite.Sprite):
         self.image = pygame.transform.scale(pygame.image.load(f"C:/Users/Josh/Desktop/CHE$$/2.0/sprites/{color}p.png").convert_alpha(), (45,45))
         self.rect = self.image.get_rect(center=pos)
         self.idx = idx
+
+    def update(self):
+        x,y = self.idx
+        self.rect.centerx = x*CELDA_SIZE + CELDA_SIZE//2
+        self.rect.centery = y*CELDA_SIZE + CELDA_SIZE//2
 
 PIEZAS = {
     3 : Peon,

@@ -1,6 +1,9 @@
 import numpy as np
 import pygame
 from piezas import PIEZAS
+from tools import enroque, coronacion, color_to_meth
+from menu import mostrar_menu_coronacion
+
 
 # Colores
 BLANCO = (255, 255, 255)
@@ -27,6 +30,8 @@ class Tablero():
         else:
             self.tablero = setup
 
+        self.to_play = "w"
+
         self.ocupadas = {}
         self.reyes = {}
         self.controladas = {"w" : set(), "b" : set()}
@@ -35,7 +40,7 @@ class Tablero():
 
         self.piezas_x_color = {"w" : [], "b" : []}
         self.piezas = self.get_piezas()
-        self.legal_moves = {"w" : {}, "b" : {}}
+        self.all_cmoves = {"w" : {}, "b" : {}}
 
 
     def get_piezas(self):
@@ -76,18 +81,137 @@ class Tablero():
                 p_moves, self.controladas[color] = p.get_moves(self.ocupadas, self.controladas[color])
                 all_moves[p] = p_moves
 
-        self.legal_moves[color] = all_moves
-    
+        self.all_cmoves[color] = all_moves
+
+    def is_valid_move(self, pieza, move):
+        if move not in self.all_cmoves[pieza.color][pieza]:
+            return None
+        
+        otro = "b" if self.to_play == "w" else "w"
+        origen = tuple(map(int, pieza.idx))
+        capturada = self.ocupadas.get(move)
+
+        self.ocupadas.pop(origen, None)
+        self.ocupadas[move] = pieza
+        pieza.idx = np.array(move)
+
+        if capturada:
+            self.piezas_x_color[otro].remove(capturada)
+
+        self.get_all_moves(otro)
+        in_check = self.reyes[pieza.color].is_in_check
+
+        self.ocupadas.pop(move, None)
+        pieza.idx = np.array(origen)
+        self.ocupadas[origen] = pieza
+
+        if capturada:
+            self.piezas_x_color[otro].append(capturada)
+            self.ocupadas[move] = capturada
+        
+        self.get_all_moves(otro)
+
+        return None if in_check else move
+
+    def get_legal_moves(self, color):
+        legal_moves = {}
+
+        for p in self.all_cmoves[color]:
+            p_legal = []
+            moves = self.all_cmoves[color][p]
+
+            for m in moves:
+                move = self.is_valid_move(p,m)
+
+                if move:
+                    p_legal.append(m)
+
+            if len(p_legal)>0:
+                legal_moves[p] = p_legal
+
+        return legal_moves
+
+    def check_checkmate(self):
+        legales = self.get_legal_moves(self.to_play)
+
+        if self.reyes[self.to_play].is_in_check:
+            if not legales:
+                print("CHECKMATE!")
+        
+        else:
+            if not legales:
+                print("Ahogado :(")
+
+    def make_move(self, pieza, move, screen, sprites):
+        if abs(pieza.pieza) == 17 and (move == enroque[self.to_play][0][0][0] or move == enroque[self.to_play][1][0][0]):
+            if move == enroque[self.to_play][0][0][0]:
+                if pieza.enroques[0]:
+                    #movimiento del rey
+                    self.ocupadas[move] = pieza
+                    pieza.idx = move
+
+                    #movimiento torre
+                    torre_key = enroque[self.to_play][0][1]
+                    torre = self.ocupadas[torre_key]
+                    x,y = move
+                    torre.idx = (x-1,y)
+
+            if move == enroque[self.to_play][1][0][0]:
+                if pieza.enroques[0]:
+                    #movimiento del rey
+                    self.ocupadas[move] = pieza
+                    pieza.idx = move
+
+                    #movimiento torre
+                    torre_key = enroque[self.to_play][1][1]
+                    torre = self.ocupadas[torre_key]
+                    x,y = move
+                    torre.idx = (x+1,y)
+        
+        else:
+            if move in self.ocupadas:
+                capturada = self.ocupadas.pop(move)
+                self.piezas.remove(capturada)
+
+            self.ocupadas[move] = pieza
+            origen = pieza.idx
+            pieza.idx = move
+
+            if abs(pieza.pieza) == 3: #es peon
+                move_arr = np.array(move)
+                delta_pos = move_arr-origen
+                if abs(delta_pos[1])==2:
+                    casilla = move_arr + np.array([0,-1*color_to_meth.get(pieza.color)])
+                    self.al_paso_casilla[self.to_play] += [tuple(map(int,casilla))]
+                    self.al_paso_peon = pieza
+
+                otro = "b" if self.to_play == "w" else "w"
+                if move in self.al_paso_casilla[otro]:
+                    self.piezas.remove(self.al_paso_peon)
+                
+                if move[1] == coronacion[pieza.color]:
+                    clave = mostrar_menu_coronacion(screen, pieza.color, ANCHO//2, ALTO//2, sprites)
+                    self.piezas.remove(pieza)
+                    pieza = pieza.coronar(clave)
+                    self.piezas.add(pieza)
+
+        if abs(pieza.pieza) == 5 or abs(pieza.pieza) == 17:
+            pieza.moved = True
+
     def update(self):
         self.ocupadas = {}
         self.piezas_x_color = {"w": [], "b": []}
         for p in self.piezas:
+            p.update()
             key = tuple(map(int, p.idx))
             self.ocupadas[key] = p
             self.piezas_x_color[p.color].append(p)
         for c in ["w", "b"]:
             self.controladas[c] = set()
             self.get_all_moves(c)
+
+        self.to_play = 'b' if self.to_play=='w' else 'w'
+        self.al_paso_casilla[self.to_play].clear()
 
 
     def dibujar_tablero(self, screen):
