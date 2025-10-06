@@ -1,7 +1,7 @@
 import numpy as np
 import pygame
 from piezas import PIEZAS
-from tools import enroque, coronacion, color_to_meth
+from tools import enroque, coronacion, color_to_meth, rey_origen
 from menu import mostrar_menu_coronacion
 
 
@@ -143,7 +143,7 @@ class Tablero():
                 print("Ahogado :(")
 
     def make_move(self, pieza, move, screen, sprites):
-        if abs(pieza.pieza) == 17 and (move == enroque[self.to_play][0][0][0] or move == enroque[self.to_play][1][0][0]):
+        if abs(pieza.pieza) == 17 and (move == enroque[self.to_play][0][0][0] or move == enroque[self.to_play][1][0][0]) and tuple(map(int, pieza.idx))== rey_origen[self.to_play]:
             if move == enroque[self.to_play][0][0][0]:
                 if pieza.enroques[0]:
                     #movimiento del rey

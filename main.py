@@ -1,9 +1,6 @@
 from tablero import Tablero, ANCHO, ALTO, CELDA_SIZE
 import pygame
 import sys
-import numpy as np
-from tools import color_to_meth, coronacion, enroque, rey_origen
-from menu import mostrar_menu_coronacion
 
 class Game:
     def __init__(self):
