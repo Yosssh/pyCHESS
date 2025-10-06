@@ -8,7 +8,7 @@ class Game:
         self.screen = pygame.display.set_mode((ANCHO, ALTO))
         pygame.display.set_caption("CHE$$")
         self.clock = pygame.time.Clock()
-        self.tablero = Tablero()
+        self.tablero = Tablero(FEN="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
         self.game = True
         self.selected = None
         self.something = False

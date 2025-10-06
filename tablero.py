@@ -1,7 +1,7 @@
 import numpy as np
 import pygame
 from piezas import PIEZAS
-from tools import enroque, coronacion, color_to_meth, rey_origen
+from tools import enroque, coronacion, color_to_meth, rey_origen, salida_cond, FEN_translate
 from menu import mostrar_menu_coronacion
 
 
@@ -14,9 +14,18 @@ ANCHO, ALTO = 420, 420
 CELDA_SIZE = ANCHO // 8
 
 class Tablero():
-    def __init__(self, setup=None):
-        if not setup:
-            self.tablero = [
+    def __init__(self, FEN=None):
+        self.ocupadas = {}
+        self.reyes = {}
+        self.controladas = {"w" : set(), "b" : set()}
+        self.al_paso_casilla = {"w" : [], "b" : []}
+        self.al_paso_peon = None
+
+        self.piezas_x_color = {"w" : [], "b" : []}
+        self.all_cmoves = {"w" : {}, "b" : {}}
+
+        if not FEN:
+            self.tablero = np.array([
                 [-11,-5,-7,-13,-17,-7,-5,-11],
                 [-3,-3,-3,-3,-3,-3,-3,-3],
                 [1, 1, 1, 1, 1, 1, 1, 1],
@@ -25,27 +34,31 @@ class Tablero():
                 [1, 1, 1, 1, 1, 1, 1, 1],
                 [3, 3, 3, 3, 3, 3, 3, 3],
                 [11, 5, 7, 13, 17, 7, 5, 11]
-                ]
-            
+                ])
+            self.to_play = "w"
+            self.halfmoves = 0
+            self.turn = 1
+            self.piezas = self.get_piezas()
+
+
+
         else:
-            self.tablero = setup
-
-        self.to_play = "w"
-
-        self.ocupadas = {}
-        self.reyes = {}
-        self.controladas = {"w" : set(), "b" : set()}
-        self.al_paso_casilla = {"w" : [], "b" : []}
-        self.al_paso_peon = None
-
-        self.piezas_x_color = {"w" : [], "b" : []}
-        self.piezas = self.get_piezas()
-        self.all_cmoves = {"w" : {}, "b" : {}}
+            self.tablero, self.to_play, castle, al_paso_casilla, self.halfmoves, self.turn = FEN_translate(FEN)
+            self.piezas = self.get_piezas()
+            white, black = castle
+            self.reyes["w"].enroques = white
+            self.reyes["b"].enroques = black
+            if al_paso_casilla:
+                otro = "b" if self.to_play == "w" else "w"
+                self.al_paso_casilla[otro] = al_paso_casilla
+                al_paso_key = (al_paso_casilla[0] + color_to_meth[otro], al_paso_casilla[1])
+                self.al_paso_peon = self.ocupadas[al_paso_key]
 
 
     def get_piezas(self):
         piezas = pygame.sprite.Group()
-        for f, fila in enumerate(self.tablero):
+        tablero = self.tablero.tolist()
+        for f, fila in enumerate(tablero):
             for c, valor in enumerate(fila):
                 if valor == 1:
                     continue
@@ -143,6 +156,10 @@ class Tablero():
                 print("Ahogado :(")
 
     def make_move(self, pieza, move, screen, sprites):
+        self.halfmoves +=1
+        if pieza.color == "b":
+            self.turn += 1
+
         if abs(pieza.pieza) == 17 and (move == enroque[self.to_play][0][0][0] or move == enroque[self.to_play][1][0][0]) and tuple(map(int, pieza.idx))== rey_origen[self.to_play]:
             if move == enroque[self.to_play][0][0][0]:
                 if pieza.enroques[0]:
@@ -170,6 +187,7 @@ class Tablero():
         
         else:
             if move in self.ocupadas:
+                self.halfmoves = 0
                 capturada = self.ocupadas.pop(move)
                 self.piezas.remove(capturada)
 
@@ -178,6 +196,7 @@ class Tablero():
             pieza.idx = move
 
             if abs(pieza.pieza) == 3: #es peon
+                self.halfmoves = 0
                 move_arr = np.array(move)
                 delta_pos = move_arr-origen
                 if abs(delta_pos[1])==2:
