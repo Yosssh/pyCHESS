@@ -40,9 +40,13 @@ class Game:
 
     def main(self):
         self.tablero.get_all_moves(self.tablero.to_play)
+        print(self.tablero.to_FEN())
+        print(self.tablero.tablero)
         while self.game:
 
             if self.something:
+                print(self.tablero.to_FEN())
+                print(self.tablero.tablero)
                 self.tablero.check_checkmate()
 
             self.something = False

@@ -1,7 +1,7 @@
 import numpy as np
 import pygame
 from piezas import PIEZAS
-from tools import enroque, coronacion, color_to_meth, rey_origen, salida_cond, FEN_translate
+from tools import enroque, coronacion, color_to_meth, rey_origen, pnum_to_caracter, FEN_translate
 from menu import mostrar_menu_coronacion
 
 
@@ -12,6 +12,7 @@ NEGRO = (0, 100, 150)
 # Dimensiones del tablero y de cada celda
 ANCHO, ALTO = 420, 420
 CELDA_SIZE = ANCHO // 8
+
 
 class Tablero():
     def __init__(self, FEN=None):
@@ -41,18 +42,26 @@ class Tablero():
             self.piezas = self.get_piezas()
 
 
-
         else:
             self.tablero, self.to_play, castle, al_paso_casilla, self.halfmoves, self.turn = FEN_translate(FEN)
             self.piezas = self.get_piezas()
-            white, black = castle
-            self.reyes["w"].enroques = white
-            self.reyes["b"].enroques = black
+            for i,c in enumerate(["w", "b"]):
+                enroques = castle[i]
+
+                if all(not e for e in enroques):
+                    self.reyes[c].moved = True
+                else:
+                    for j,cond in enumerate(enroques):
+                        if not cond:
+                            la_torre = self.ocupadas.get(enroque[c][j][1])
+                            if la_torre and abs(la_torre.pieza) == 11 and la_torre.color == c:
+                                la_torre.moved = True
+
             if al_paso_casilla:
                 otro = "b" if self.to_play == "w" else "w"
                 self.al_paso_casilla[otro] = al_paso_casilla
-                al_paso_key = (al_paso_casilla[0] + color_to_meth[otro], al_paso_casilla[1])
-                self.al_paso_peon = self.ocupadas[al_paso_key]
+                al_paso_peon_key = (al_paso_casilla[0] + color_to_meth[otro], al_paso_casilla[1])
+                self.al_paso_peon = self.ocupadas[al_paso_peon_key]
 
 
     def get_piezas(self):
@@ -214,10 +223,11 @@ class Tablero():
                     pieza = pieza.coronar(clave)
                     self.piezas.add(pieza)
 
-        if abs(pieza.pieza) == 5 or abs(pieza.pieza) == 17:
+        if abs(pieza.pieza) == 11 or abs(pieza.pieza) == 17:
             pieza.moved = True
 
     def update(self):
+        self.tablero = np.ones(shape=(8,8),dtype=int)
         self.ocupadas = {}
         self.piezas_x_color = {"w": [], "b": []}
         for p in self.piezas:
@@ -225,12 +235,86 @@ class Tablero():
             key = tuple(map(int, p.idx))
             self.ocupadas[key] = p
             self.piezas_x_color[p.color].append(p)
+            valor = p.pieza if p.color=="w" else -p.pieza
+            self.tablero[key[1], key[0]] = valor
         for c in ["w", "b"]:
             self.controladas[c] = set()
             self.get_all_moves(c)
 
         self.to_play = 'b' if self.to_play=='w' else 'w'
         self.al_paso_casilla[self.to_play].clear()
+
+
+
+    def tablero_arr_to_string(self):
+        tablero_str = []
+        for fila in self.tablero.tolist():
+            fila_str = ""
+            espacio = 0
+            for casilla in fila:
+                if casilla == 1:
+                    espacio += 1
+
+                else:
+                    if espacio > 0:
+                        fila_str += str(espacio)
+                        espacio = 0
+                    fila_str += pnum_to_caracter[casilla]
+                
+            if espacio > 0:
+                fila_str += str(espacio)
+
+            tablero_str.append(fila_str)
+        
+        return "/".join(tablero_str)
+
+    def tablero_castle_to_FEN(self):
+        enroques_code = {"w" : ["K", "Q"], "b" : ["k", "q"]}
+        castl_str = ""
+
+        for c in ["w", "b"]:
+            if not self.reyes[c].moved:
+                for i,info in enumerate(enroque[c]):
+                    torre_pos = info[1]
+                    
+                    la_torre = self.ocupadas.get(torre_pos)
+
+                    if la_torre and abs(la_torre.pieza) == 11 and la_torre.color == c:
+                        if not la_torre.moved:
+                            castl_str += enroques_code[c][i]
+        
+        if len(castl_str) > 0:
+            return castl_str
+        else:
+            return "-"
+        
+    def en_passant_to_FEN(self):
+        columna_to_car = {
+            0 : "a",
+            1 : "b",
+            2 : "c",
+            3 : "d",
+            4 : "e",
+            5 : "f",
+            6 : "g",
+            7 : "h"
+        }
+        otro = "b" if self.to_play == "w" else "w"
+        if len(self.al_paso_casilla[otro]) > 0:
+            fila,columna = self.al_paso_casilla[otro][0]
+            return columna_to_car[fila]+str(8-columna)
+        else:
+            return "-"
+
+    def to_FEN(self):
+        posicion = self.tablero_arr_to_string()
+        to_play = self.to_play
+        castling = self.tablero_castle_to_FEN()
+        en_passant = self.en_passant_to_FEN()
+        halfmoves = str(self.halfmoves)
+        turno = str(self.turn)
+
+        return " ".join([posicion, to_play, castling, en_passant, halfmoves, turno])
 
 
     def dibujar_tablero(self, screen):
@@ -247,6 +331,3 @@ class Tablero():
         screen.blit(tablero_surface, tablero_pos)
 
         self.piezas.draw(screen)
-
-
-

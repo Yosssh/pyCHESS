@@ -38,6 +38,21 @@ caracter_to_pnum = {
     "K" : 17
 }
 
+pnum_to_caracter = {
+    -3 : "p",
+    3 : "P",
+    -5 : "n",
+    5 : "N",
+    -7 : "b",
+    7 : "B",
+    -11 : "r",
+    11 : "R",
+    -13 : "q",
+    13 : "Q",
+    -17 : "k",
+    17 : "K"
+}
+
 def FEN_to_array(piezas):
     tablero_arr = np.ones(shape=(8,8), dtype=int)
     filas = piezas.split("/")
