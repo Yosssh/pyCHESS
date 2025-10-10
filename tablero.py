@@ -1,9 +1,8 @@
 import numpy as np
 import pygame
-from piezas import PIEZAS
-from tools import enroque, coronacion, color_to_meth, rey_origen, pnum_to_caracter, FEN_translate
-from menu import mostrar_menu_coronacion
-
+from tools import enroque, color_to_meth, rey_origen, salida_cond
+from FEN import pnum_to_caracter, FEN_translate, FEN_to_setup
+from tablero_sprite import Tablero_sprite
 
 # Colores
 BLANCO = (255, 255, 255)
@@ -15,36 +14,25 @@ CELDA_SIZE = ANCHO // 8
 
 
 class Tablero():
-    def __init__(self, FEN=None):
-        self.ocupadas = {}
-        self.reyes = {}
-        self.controladas = {"w" : set(), "b" : set()}
-        self.al_paso_casilla = {"w" : [], "b" : []}
-        self.al_paso_peon = None
+    def __init__(self, FEN=None, visual=True):
+        self.registro = []
 
         self.piezas_x_color = {"w" : [], "b" : []}
-        self.all_cmoves = {"w" : {}, "b" : {}}
+        self.reyes = {}
+
+        self.al_paso_casilla = {"w" : [], "b" : []}
+        self.al_paso_peon = None
+        self.controladas = {"w" : set(), "b" : set()}
 
         if not FEN:
-            self.tablero = np.array([
-                [-11,-5,-7,-13,-17,-7,-5,-11],
-                [-3,-3,-3,-3,-3,-3,-3,-3],
-                [1, 1, 1, 1, 1, 1, 1, 1],
-                [1, 1, 1, 1, 1, 1, 1, 1],
-                [1, 1, 1, 1, 1, 1, 1, 1],
-                [1, 1, 1, 1, 1, 1, 1, 1],
-                [3, 3, 3, 3, 3, 3, 3, 3],
-                [11, 5, 7, 13, 17, 7, 5, 11]
-                ])
+            self.ocupadas, self.reyes = FEN_to_setup("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR")
             self.to_play = "w"
             self.halfmoves = 0
             self.turn = 1
-            self.piezas = self.get_piezas()
-
 
         else:
-            self.tablero, self.to_play, castle, al_paso_casilla, self.halfmoves, self.turn = FEN_translate(FEN)
-            self.piezas = self.get_piezas()
+            self.ocupadas, self.reyes, self.to_play, castle, al_paso_casilla, self.halfmoves, self.turn = FEN_translate(FEN)
+
             for i,c in enumerate(["w", "b"]):
                 enroques = castle[i]
 
@@ -63,192 +51,221 @@ class Tablero():
                 al_paso_peon_key = (al_paso_casilla[0] + color_to_meth[otro], al_paso_casilla[1])
                 self.al_paso_peon = self.ocupadas[al_paso_peon_key]
 
+        for key in self.ocupadas:
+            pieza = self.ocupadas[key]
+            self.piezas_x_color[pieza.color].append(pieza)
 
-    def get_piezas(self):
-        piezas = pygame.sprite.Group()
-        tablero = self.tablero.tolist()
-        for f, fila in enumerate(tablero):
-            for c, valor in enumerate(fila):
-                if valor == 1:
-                    continue
-                color = 'w' if valor > 0 else 'b'
-                pieza = abs(valor)
-                x,y = CELDA_SIZE*c+CELDA_SIZE//2, CELDA_SIZE*f+CELDA_SIZE//2
-                idx = np.array([c,f])
+        self.FEN = self.to_FEN()
+        self.estado = " ".join(self.FEN.split(" ")[:-2])
+        self.registro.append(self.estado)
 
-                pieza_obj = PIEZAS[pieza](color, idx, (x,y))
-                self.piezas_x_color[pieza_obj.color] += [pieza_obj]
-                if pieza==17:
-                    self.reyes[pieza_obj.color] = pieza_obj
-                piezas.add(pieza_obj)
-                self.ocupadas[(c,f)] = pieza_obj
-        
-        return piezas
+        if visual:
+            self.tablero_sprite = Tablero_sprite()
+            for key in self.ocupadas:
+                self.tablero_sprite.piezas_group.add(self.ocupadas[key])
+        else:
+            self.tablero_sprite = None
 
-    def get_all_moves(self, color):
-        all_moves = {}
-
+    def get_all_color_moves(self, color):
         otro = "b" if color == "w" else "w"
         self.reyes[otro].amenazas.clear()
         self.reyes[otro].is_in_check = False
 
         for p in self.piezas_x_color[color]:
             if p.pieza == 3:
-                p_moves, self.controladas[color] = p.get_moves(self.ocupadas, self.al_paso_casilla[otro], self.controladas[color])
-                all_moves[p] = p_moves
+                self.controladas[color] = p.get_moves(self.ocupadas, self.al_paso_casilla[otro], self.controladas[color])
             elif p.pieza == 17:
-                p_moves, self.controladas[color] = p.get_moves(self.ocupadas, self.controladas[color], self.controladas[otro])
-                all_moves[p] = p_moves
+                self.controladas[color] = p.get_moves(self.ocupadas, self.controladas[color], self.controladas[otro])
             else:
-                p_moves, self.controladas[color] = p.get_moves(self.ocupadas, self.controladas[color])
-                all_moves[p] = p_moves
-
-        self.all_cmoves[color] = all_moves
-
+                self.controladas[color] = p.get_moves(self.ocupadas, self.controladas[color])
+    
     def is_valid_move(self, pieza, move):
-        if move not in self.all_cmoves[pieza.color][pieza]:
+        if move not in pieza.acceso:
             return None
-        
+
+        if len(move)==3:
+            coronacion = True
+            x,y,clave = move
+            move = (x,y)
+        else:
+            coronacion = False
+
         otro = "b" if self.to_play == "w" else "w"
-        origen = tuple(map(int, pieza.idx))
-        capturada = self.ocupadas.get(move)
+        origen = pieza.idx
+        capturada = self.ocupadas.get(move) 
 
         self.ocupadas.pop(origen, None)
         self.ocupadas[move] = pieza
-        pieza.idx = np.array(move)
 
-        if capturada:
+        if capturada and capturada.color != pieza.color:
             self.piezas_x_color[otro].remove(capturada)
 
-        self.get_all_moves(otro)
+        self.get_all_color_moves(otro)
         in_check = self.reyes[pieza.color].is_in_check
 
-        self.ocupadas.pop(move, None)
-        pieza.idx = np.array(origen)
         self.ocupadas[origen] = pieza
+        self.ocupadas.pop(move, None)
 
         if capturada:
             self.piezas_x_color[otro].append(capturada)
             self.ocupadas[move] = capturada
-        
-        self.get_all_moves(otro)
+
+        self.get_all_color_moves(otro)
+
+        if coronacion:
+            move = (x,y,clave)
 
         return None if in_check else move
-
+    
     def get_legal_moves(self, color):
-        legal_moves = {}
+        legales = {}
 
-        for p in self.all_cmoves[color]:
+        for p in self.piezas_x_color[color]:
             p_legal = []
-            moves = self.all_cmoves[color][p]
-
-            for m in moves:
-                move = self.is_valid_move(p,m)
+            for m in p.acceso:
+                move = self.is_valid_move(p, m)
 
                 if move:
-                    p_legal.append(m)
+                    p_legal.append(move)
 
             if len(p_legal)>0:
-                legal_moves[p] = p_legal
+                legales[p] = p_legal
 
-        return legal_moves
-
-    def check_checkmate(self):
+        return legales
+    
+    def check_state(self):
         legales = self.get_legal_moves(self.to_play)
 
-        if self.reyes[self.to_play].is_in_check:
-            if not legales:
-                print("CHECKMATE!")
+        if not legales:
+            if self.reyes[self.to_play].is_in_check:
+                    print("Checkmate!")
+                    score = 1 if self.to_play == "b" else -1
+                    return False, score
+            
+            else:
+                    print("Stalemate :(")
+                    return False, 0.5
         
-        else:
-            if not legales:
-                print("Ahogado :(")
+        if self.halfmoves == 50:
+            print("tablas por 50 movimientos")
+            return False, 0.5
+        
+        if self.registro.count(self.estado) == 3:
+            print("tablas por repetición")
+            return False, 0.5
 
-    def make_move(self, pieza, move, screen, sprites):
-        self.halfmoves +=1
+        else:
+            return True, None
+
+    def make_move(self, pieza, move, clave=None):
+        self.halfmoves += 1
         if pieza.color == "b":
             self.turn += 1
 
-        if abs(pieza.pieza) == 17 and (move == enroque[self.to_play][0][0][0] or move == enroque[self.to_play][1][0][0]) and tuple(map(int, pieza.idx))== rey_origen[self.to_play]:
+        if len(move) == 3:
+            x,y,clave = move
+            move = (x,y)
+
+        if pieza.pieza == 17 and (move == enroque[self.to_play][0][0][0] or move == enroque[self.to_play][1][0][0]) and pieza.idx== rey_origen[self.to_play]:
             if move == enroque[self.to_play][0][0][0]:
                 if pieza.enroques[0]:
                     #movimiento del rey
+                    self.ocupadas.pop(pieza.idx, None)
                     self.ocupadas[move] = pieza
-                    pieza.idx = move
 
                     #movimiento torre
                     torre_key = enroque[self.to_play][0][1]
-                    torre = self.ocupadas[torre_key]
-                    x,y = move
-                    torre.idx = (x-1,y)
+                    torre = self.ocupadas.pop(torre_key)
+                    x,y = move[0]-1,move[1]
+                    self.ocupadas[(x,y)] = torre
 
             if move == enroque[self.to_play][1][0][0]:
                 if pieza.enroques[0]:
                     #movimiento del rey
+                    self.ocupadas.pop(pieza.idx, None)
                     self.ocupadas[move] = pieza
-                    pieza.idx = move
 
                     #movimiento torre
                     torre_key = enroque[self.to_play][1][1]
-                    torre = self.ocupadas[torre_key]
-                    x,y = move
-                    torre.idx = (x+1,y)
+                    torre = self.ocupadas.pop(torre_key)
+                    x,y = move[0]+1,move[1]
+                    self.ocupadas[(x,y)] = torre
         
         else:
             if move in self.ocupadas:
                 self.halfmoves = 0
                 capturada = self.ocupadas.pop(move)
-                self.piezas.remove(capturada)
 
-            self.ocupadas[move] = pieza
+
             origen = pieza.idx
-            pieza.idx = move
 
-            if abs(pieza.pieza) == 3: #es peon
+            if pieza.pieza == 3:
                 self.halfmoves = 0
-                move_arr = np.array(move)
-                delta_pos = move_arr-origen
-                if abs(delta_pos[1])==2:
-                    casilla = move_arr + np.array([0,-1*color_to_meth.get(pieza.color)])
-                    self.al_paso_casilla[self.to_play] += [tuple(map(int,casilla))]
-                    self.al_paso_peon = pieza
+
+                if origen[1] == salida_cond[pieza.color]:
+                    move_arr = np.array(move)
+                    delta_pos = move_arr - np.array(origen)
+                    if abs(delta_pos[1])==2:
+                        casilla = move_arr + np.array([0,-1*color_to_meth.get(pieza.color)])
+                        self.al_paso_casilla[self.to_play] += [tuple(map(int,casilla))]
+                        self.al_paso_peon = pieza
 
                 otro = "b" if self.to_play == "w" else "w"
                 if move in self.al_paso_casilla[otro]:
-                    self.piezas.remove(self.al_paso_peon)
-                
-                if move[1] == coronacion[pieza.color]:
-                    clave = mostrar_menu_coronacion(screen, pieza.color, ANCHO//2, ALTO//2, sprites)
-                    self.piezas.remove(pieza)
-                    pieza = pieza.coronar(clave)
-                    self.piezas.add(pieza)
+                    self.ocupadas.pop(self.al_paso_peon.idx)
 
-        if abs(pieza.pieza) == 11 or abs(pieza.pieza) == 17:
+                if clave:
+                    pieza = pieza.coronar(clave)
+
+            self.ocupadas[move] = pieza
+            self.ocupadas.pop(pieza.idx, None)             
+
+        if pieza.pieza == 11 or pieza.pieza == 17:
             pieza.moved = True
 
     def update(self):
-        self.tablero = np.ones(shape=(8,8),dtype=int)
-        self.ocupadas = {}
-        self.piezas_x_color = {"w": [], "b": []}
-        for p in self.piezas:
-            p.update()
-            key = tuple(map(int, p.idx))
-            self.ocupadas[key] = p
-            self.piezas_x_color[p.color].append(p)
-            valor = p.pieza if p.color=="w" else -p.pieza
-            self.tablero[key[1], key[0]] = valor
+        self.piezas_x_color = {"w" : [], "b" : []}
+
+        if self.tablero_sprite:
+            self.tablero_sprite.piezas_group.empty()
+        
+        for key in self.ocupadas:
+            pieza = self.ocupadas[key]
+            self.piezas_x_color[pieza.color].append(pieza)
+            pieza.idx = key
+
+
+        if self.tablero_sprite:
+            self.tablero_sprite.update(self.ocupadas)
+
         for c in ["w", "b"]:
             self.controladas[c] = set()
-            self.get_all_moves(c)
+            self.get_all_color_moves(c)
 
         self.to_play = 'b' if self.to_play=='w' else 'w'
         self.al_paso_casilla[self.to_play].clear()
 
+        self.FEN = self.to_FEN()
+        self.estado = " ".join(self.FEN.split(" ")[:-2])
+        self.registro.append(self.estado)
 
+    def get_piezas_array(self):
+        p_arr = np.ones(shape=(8,8), dtype=int)
 
-    def tablero_arr_to_string(self):
+        for i,color in enumerate(["w", "b"]):
+            for p in self.piezas_x_color[color]:
+                columna,fila = p.idx
+                if color == "w":
+                    p_arr[fila,columna] = p.pieza
+                else:
+                    p_arr[fila,columna] = -p.pieza
+        
+        return p_arr
+
+    def ocupadas_to_FEN(self):
+        tablero_arr = self.get_piezas_array()
         tablero_str = []
-        for fila in self.tablero.tolist():
+        for fila in tablero_arr.tolist():
             fila_str = ""
             espacio = 0
             for casilla in fila:
@@ -307,7 +324,7 @@ class Tablero():
             return "-"
 
     def to_FEN(self):
-        posicion = self.tablero_arr_to_string()
+        posicion = self.ocupadas_to_FEN()
         to_play = self.to_play
         castling = self.tablero_castle_to_FEN()
         en_passant = self.en_passant_to_FEN()
@@ -315,19 +332,3 @@ class Tablero():
         turno = str(self.turn)
 
         return " ".join([posicion, to_play, castling, en_passant, halfmoves, turno])
-
-
-    def dibujar_tablero(self, screen):
-        tablero_pos = (0,0)
-        tablero_surface = pygame.Surface((ANCHO, ALTO))
-        for fila in range(8):
-            for columna in range(8):
-                color = BLANCO if (fila + columna) % 2 == 0 else NEGRO
-                pygame.draw.rect(
-                    tablero_surface,
-                    color,
-                    (columna * CELDA_SIZE, fila * CELDA_SIZE, CELDA_SIZE, CELDA_SIZE)
-                )
-        screen.blit(tablero_surface, tablero_pos)
-
-        self.piezas.draw(screen)

@@ -1,6 +1,9 @@
-from tablero import Tablero, ANCHO, ALTO, CELDA_SIZE
+from tablero_sprite import ANCHO, ALTO, CELDA_SIZE
 import pygame
 import sys
+from tablero import Tablero
+from menu import mostrar_menu_coronacion
+from tools import coronacion
 
 class Game:
     def __init__(self):
@@ -8,7 +11,7 @@ class Game:
         self.screen = pygame.display.set_mode((ANCHO, ALTO))
         pygame.display.set_caption("CHE$$")
         self.clock = pygame.time.Clock()
-        self.tablero = Tablero(FEN="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+        self.tablero = Tablero()
         self.game = True
         self.selected = None
         self.something = False
@@ -25,7 +28,7 @@ class Game:
         }
 
     def select_pieza(self, event):
-        for p in self.tablero.piezas:
+        for p in self.tablero.tablero_sprite.piezas_group:
             if p.rect.collidepoint(event.pos) and p.color == self.tablero.to_play:
                 self.selected = p
                 self.selected.offset_x = self.selected.rect.x - event.pos[0]
@@ -39,23 +42,18 @@ class Game:
             self.selected.rect.y = mouse_y + self.selected.offset_y
 
     def main(self):
-        self.tablero.get_all_moves(self.tablero.to_play)
-        print(self.tablero.to_FEN())
-        print(self.tablero.tablero)
+        self.tablero.get_all_color_moves(self.tablero.to_play)
         while self.game:
 
             if self.something:
-                print(self.tablero.to_FEN())
-                print(self.tablero.tablero)
-                self.tablero.check_checkmate()
-
+                self.game, score = self.tablero.check_state()
             self.something = False
             
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
-                    
+
                 if event.type == pygame.MOUSEMOTION:
                     self.dragging(event.pos)
                 
@@ -68,10 +66,16 @@ class Game:
 
                         idx_x,idx_y = event.pos[0]//CELDA_SIZE,event.pos[1]//CELDA_SIZE
 
-                        move = self.tablero.is_valid_move(self.selected, (idx_x,idx_y))
+                        move = tuple(map(int, (idx_x,idx_y)))
+
+                        if self.selected.pieza == 3 and move[1] == coronacion[self.selected.color]:
+                            clave = mostrar_menu_coronacion(self.screen, self.selected.color, ANCHO//2, ALTO//2, self.sprites_piezas)
+                            move += tuple([clave])
+
+                        move = self.tablero.is_valid_move(self.selected, move)
 
                         if move:
-                            self.tablero.make_move(self.selected, move, self.screen, self.sprites_piezas)
+                            self.tablero.make_move(self.selected, move)
                             self.tablero.update()
                             self.something = True
                                 
@@ -82,7 +86,7 @@ class Game:
                         self.selected = None
 
             self.screen.fill((0, 0, 0))
-            self.tablero.dibujar_tablero(self.screen)
+            self.tablero.tablero_sprite.pintar_tablero(self.screen)
             pygame.display.flip()
             self.clock.tick(60)
 
